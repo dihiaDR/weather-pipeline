@@ -1,0 +1,57 @@
+{
+	"__inputs": [],
+	"title": "Weather Pipeline",
+	"tags": ["flink", "weather"],
+	"timezone": "browser",
+	"schemaVersion": 38,
+	"version": 2,
+	"refresh": "5s",
+	"panels": [
+		{
+			"type": "timeseries",
+			"title": "Température moyenne (°C)",
+			"datasource": "Influx",
+			"fieldConfig": {
+				"defaults": {"unit": "celsius", "displayNameFromDS": true},
+				"overrides": []
+			},
+			"targets": [
+				{
+					"query": "from(bucket: \"weather_processed\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) =>\n       r[\"_measurement\"] == \"weather\" and\n       r[\"_field\"] == \"temp_avg\")",
+					"refId": "A"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"title": "Vent maximum (m/s)",
+			"datasource": "Influx",
+			"fieldConfig": {
+				"defaults": {"unit": "velocityms", "displayNameFromDS": true},
+				"overrides": []
+			},
+			"targets": [
+				{
+					"query": "from(bucket: \"weather_processed\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) =>\n       r[\"_measurement\"] == \"weather\" and\n       r[\"_field\"] == \"wind_max\")",
+					"refId": "B"
+				}
+			]
+		},
+		{
+			"type": "stat",
+			"title": "Messages agrégés (compte total)",
+			"datasource": "Influx",
+			"fieldConfig": {
+				"defaults": {"unit": "none", "displayNameFromDS": true},
+				"overrides": []
+			},
+			"options": {"reduceOptions": {"calcs": ["sum"]}},
+			"targets": [
+				{
+					"query": "from(bucket: \"weather_processed\")\n  |> range(start: 0)\n  |> filter(fn: (r) =>\n       r[\"_measurement\"] == \"weather\" and\n       r[\"_field\"] == \"count\")",
+					"refId": "C"
+				}
+			]
+		}
+	]
+}

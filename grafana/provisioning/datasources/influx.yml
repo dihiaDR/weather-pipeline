@@ -1,0 +1,12 @@
+apiVersion: 1
+datasources:
+  - name: Influx
+    type: influxdb
+    url: http://influxdb:8086
+    access: proxy
+    jsonData:
+      version: Flux
+      organization: weather
+      defaultBucket: weather_processed
+    secureJsonData:
+      token: adminadmin

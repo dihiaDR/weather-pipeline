@@ -1,0 +1,124 @@
+
+networks: { bench-net: {} }
+volumes:   { kafka-data: {}, influx-data: {} }
+
+services:
+  # 1. Kafka (KRaft, 1 broker)
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    networks: [bench-net]
+    volumes: [kafka-data:/var/lib/kafka/data]
+    ports: ["29092:9092"]               # accès facultatif depuis l’hôte
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD","kafka-broker-api-versions","--bootstrap-server","localhost:9092"]
+      interval: 10s 
+      timeout: 5s 
+      retries: 10
+
+# ------------------------------------------------------------------
+#  Producer: lit le CSV et pousse sur Kafka
+# ------------------------------------------------------------------
+  csv-producer:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: { kafka: { condition: service_healthy } }
+    networks: [bench-net]
+    volumes:
+      - ./data/weather_data.csv:/data/weather_data.csv:ro
+    entrypoint:
+      - bash
+      - -eu
+      - -c
+      - |
+        # 1) crée le topic si besoin
+        kafka-topics --bootstrap-server kafka:9092 \
+          --create --topic weather.raw --partitions 1 --replication-factor 1 || true
+
+        # 2) producteur unique
+        echo "→ boucle infinie sur weather_data.csv"
+        while true; do
+          # envoie tout le fichier (sans l'en-tête) puis fait une pause de 5 s
+          tail -n +2 /data/weather_data.csv | \
+            kafka-console-producer --bootstrap-server kafka:9092 --topic weather.raw
+          sleep 5
+        done
+    restart: on-failure
+
+
+
+# --------------------------------------------------------------------------------
+#  FLINK 1.20  –  Job cluster = JobManager (standalone-job)  + 1 TaskManager
+# --------------------------------------------------------------------------------
+  flink-jobmanager:
+    image: flink:1.20-java17
+    command: standalone-job --job-classname io.bench.weather.FlinkPipeline
+    networks: [bench-net]
+    depends_on:
+      kafka: { condition: service_healthy }
+    restart: on-failure
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 1536m
+        parallelism.default: 2
+    volumes:
+      - ./pipelines/flink/target/flink-pipeline.jar:/opt/flink/usrlib/flink-pipeline.jar:ro
+    ports: ["8081:8081"]
+
+  flink-taskmanager:
+    image: flink:1.20-java17
+    command: taskmanager
+    networks: [bench-net]
+    depends_on:
+      flink-jobmanager: { condition: service_started }
+      kafka:           { condition: service_healthy }
+    restart: on-failure
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+        parallelism.default: 2
+    volumes:
+      - ./pipelines/flink/target/flink-pipeline.jar:/opt/flink/usrlib/flink-pipeline.jar:ro
+
+
+  # 4. InfluxDB 2.7
+  influxdb:
+    image: influxdb:2.7
+    networks: [bench-net]
+    volumes:
+      - influx-data:/var/lib/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminadmin
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: adminadmin
+      DOCKER_INFLUXDB_INIT_ORG: weather
+      DOCKER_INFLUXDB_INIT_BUCKET: weather_processed
+    ports: ["8086:8086"]
+    healthcheck:
+      test: ["CMD","curl","-f","http://localhost:8086/health"]
+      interval: 10s 
+      timeout: 5s 
+      retries: 12
+
+  # 5. Grafana
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports: ["3000:3000"]
+    networks: [bench-net]
+    depends_on: { influxdb: { condition: service_healthy } }
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
