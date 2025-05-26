@@ -1,4 +1,0 @@
-io/bench/weather/FlinkPipeline.class
-io/bench/weather/FlinkPipeline$InfluxSink.class
-io/bench/weather/AggregateWindowFunction.class
-io/bench/weather/FlinkPipeline$CsvAggregator.class

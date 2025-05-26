@@ -1,0 +1,33 @@
+# Dossier Maven
+target/
+
+# Fichiers de build
+*.class
+*.jar
+*.war
+*.ear
+
+# Dossiers temporaires
+*.log
+*.tmp
+*.swp
+
+# IDEs
+## IntelliJ
+.idea/
+*.iml
+
+## Eclipse
+.project
+.classpath
+.settings/
+
+## VS Code
+.vscode/
+
+# OS (Mac & Linux)
+.DS_Store
+Thumbs.db
+
+# Fichiers de tests temporaires
+test-output/
